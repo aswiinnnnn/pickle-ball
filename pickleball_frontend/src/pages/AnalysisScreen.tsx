@@ -1,8 +1,8 @@
 import { Monitor, Layers, Flame, Target, Crosshair } from "lucide-react";
 import { useState, useEffect } from "react";
-import ScorePanel from "@/components/ScorePanel";
+import OperationalPanel from "@/components/ScorePanel"; // Renamed ScorePanel to OperationalPanel
 import StatsPanel from "@/components/StatsPanel";
-import VerdictPanel from "@/components/VerdictPanel";
+import SpatialPanel from "@/components/VerdictPanel"; // Renamed VerdictPanel to SpatialPanel
 import SessionAnalytics from "@/components/SessionAnalytics";
 import BirdEyeMap from "@/components/BirdEyeMap";
 import VideoPlayer from "@/components/VideoPlayer";
@@ -46,49 +46,29 @@ const AnalysisScreen = ({ jobId, onBack }: AnalysisScreenProps) => {
           Smart Analytics
         </span>
       </div>
-      <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
-        <div className="h-1.5 w-1.5 rounded-full bg-primary pulse-dot" />
-        RealTime Live 120 FPS
-      </div>
+
     </header>
 
     {/* Main Content */}
     <div className="flex flex-1 min-h-0">
       {/* Left Sidebar */}
-      <aside className="w-64 shrink-0 border-r border-border p-3 flex flex-col gap-2 overflow-y-auto">
-        <ScorePanel />
+      <aside className="w-48 shrink-0 border-r border-border p-2 flex flex-col gap-2">
+        <OperationalPanel stats={stats} />
         <StatsPanel stats={stats} />
-        <VerdictPanel />
+        <SpatialPanel stats={stats} />
         <SessionAnalytics stats={stats} />
       </aside>
 
       {/* Center - Video */}
-      <main className="flex-1 p-3 min-w-0">
+      <main className="flex-1 p-2 min-w-0">
         <VideoPlayer jobId={jobId} liveData={liveData} />
       </main>
 
       {/* Right Sidebar */}
-      <aside className="w-56 shrink-0 border-l border-border p-3 flex flex-col gap-2">
-        <BirdEyeMap stats={stats} />
+      <aside className="w-56 shrink-0 border-l border-border p-2 flex flex-col gap-2">
+        <BirdEyeMap jobId={jobId} stats={stats} />
 
-        {/* Quick Actions */}
-        <div className="stat-card space-y-1.5 mt-auto">
-          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Analysis Tools</span>
-          {[
-            { icon: Layers, label: "Analytic Overlay" },
-            { icon: Flame, label: "Heatmap" },
-            { icon: Target, label: "Player Tracking" },
-            { icon: Crosshair, label: "Frame Quality" },
-          ].map(({ icon: Icon, label }) => (
-            <button
-              key={label}
-              className="w-full flex items-center gap-2 rounded bg-secondary/50 px-2.5 py-1.5 text-xs font-mono text-secondary-foreground hover:bg-primary/20 hover:text-primary transition-colors"
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-            </button>
-          ))}
-        </div>
+
       </aside>
     </div>
 

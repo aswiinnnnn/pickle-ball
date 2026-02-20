@@ -117,9 +117,9 @@ class Analytics:
     def set_canvas_size(self, width, height):
         self.canvas_w, self.canvas_h = width, height
         if self.filters.get("player_heatmap"):
-            self.player_heat_accum = np.zeros((height, width), dtype=np.float32)
+            self.player_heat_accum = np.zeros((900, 400), dtype=np.float32)
         if self.filters.get("ball_heatmap"):
-            self.ball_heat_accum = np.zeros((height, width), dtype=np.float32)
+            self.ball_heat_accum = np.zeros((900, 400), dtype=np.float32)
 
         self._player_kernel = self._make_gaussian_kernel(self.stamp_radius_player, self.stamp_sigma_player)
         self._ball_kernel   = self._make_gaussian_kernel(self.stamp_radius_ball,   self.stamp_sigma_ball)
@@ -387,11 +387,12 @@ class Analytics:
         return kernel.astype(np.float32)
 
     def _stamp(self, accum: np.ndarray, x: int, y: int, kernel: np.ndarray, weight: float):
-        if not (0 <= x < (self.canvas_w or 0) and 0 <= y < (self.canvas_h or 0)):
+        h, w = accum.shape
+        if not (0 <= x < w and 0 <= y < h):
             return
         r = (kernel.shape[0] - 1) // 2
         x0 = max(x - r, 0); y0 = max(y - r, 0)
-        x1 = min(x + r + 1, self.canvas_w); y1 = min(y + r + 1, self.canvas_h)
+        x1 = min(x + r + 1, w); y1 = min(y + r + 1, h)
         kx0 = r - (x - x0); ky0 = r - (y - y0)
         kx1 = kx0 + (x1 - x0); ky1 = ky0 + (y1 - y0)
         accum[y0:y1, x0:x1] += kernel[ky0:ky1, kx0:kx1] * weight
@@ -418,22 +419,18 @@ class Analytics:
 
     def _in_kitchen(self, pt):
         """True iff point lies in the (smoothed) kitchen band; uses small hysteresis."""
-        if not (self.canvas_w and self.canvas_h):
-            return False
         _, y = pt
 
         y_min, y_max = self._current_kitchen_bounds_with_fallback()
-        y_eps = 0.01 * self.canvas_h  # ~1% hysteresis
+        y_eps = 10  # roughly 1% hysteresis
         return (y_min - y_eps) <= y <= (y_max + y_eps)
     
     def _current_kitchen_bounds_with_fallback(self):
         """Return (y_min, y_max) for kitchen band in bird coords."""
         if self._kitchen_y_min is not None and self._kitchen_y_max is not None:
             return self._kitchen_y_min, self._kitchen_y_max
-        # Fallback to old proportional thresholds until keypoints arrive
-        y_kitchen_min = 300 / 880.0 * (self.canvas_h or 0)
-        y_kitchen_max = 580 / 880.0 * (self.canvas_h or 0)
-        return y_kitchen_min, y_kitchen_max
+        # Fallback to logical court thresholds (300 to 580)
+        return 300, 580
 
     def update_kitchen_from_keypoints(self, proj_kpts: np.ndarray):
         """
@@ -543,7 +540,7 @@ class Analytics:
         return out.astype(np.int32)
 
     # ---------- outputs ----------
-    def export_stats(self) -> dict:
+    def export_stats(self, **kwargs) -> dict:
         fps = float(self._fps or 30)
          
         current_s = self._rally_frames / fps
@@ -553,8 +550,9 @@ class Analytics:
         elapsed_min = (self._elapsed_frames / fps) / 60.0
         tempo = (len(hist_frames) / elapsed_min) if elapsed_min > 1e-6 else 0.0
 
-        return {
+        stats = {
             "rally": {
+                "is_active": self._rally_active,
                 "current_rally_s": float(current_s),
                 "avg_rally_s": float(avg_s),
                 "longest_rally_s": float(max_s),
@@ -564,8 +562,27 @@ class Analytics:
             "kitchen": {
                 "players_in_kitchen": list(self.players_in_kitchen),
                 "zone_counts": {k: int(v) for k, v in self.zone_counts.items()}
-            }
+            },
+            "operational": {
+                "fps": fps,
+                "total_frames": getattr(self, "_total_frames", 0),
+                "current_frame": self._elapsed_frames,
+                "gap_frames": self._gap_frames
+            },
+            "spatial": kwargs
         }
+        return self._sanitize_for_json(stats)
+
+    def _sanitize_for_json(self, obj):
+        if isinstance(obj, dict):
+            return {k: self._sanitize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._sanitize_for_json(v) for v in obj]
+        elif hasattr(obj, "tolist"):
+            return self._sanitize_for_json(obj.tolist())
+        elif isinstance(obj, np.generic):
+            return obj.item()
+        return obj
 
     def save_outputs(self, out_dir=None):
         if not out_dir:
@@ -581,3 +598,17 @@ class Analytics:
             heat8_b = self._to_uint8_with_auto_contrast(cv2.GaussianBlur(self.ball_heat_accum, (15, 15), 0))
             color_b = cv2.applyColorMap(heat8_b, cv2.COLORMAP_JET)
             cv2.imwrite(f"{out_dir}/ball_heatmap.png", color_b)
+
+    def get_player_heatmap_bytes(self):
+        if self.player_heat_accum is None: return None
+        heat8 = self._to_uint8_with_auto_contrast(cv2.GaussianBlur(self.player_heat_accum, (15, 15), 0))
+        color = cv2.applyColorMap(heat8, cv2.COLORMAP_JET)
+        ret, buf = cv2.imencode('.jpg', color)
+        return buf.tobytes() if ret else None
+        
+    def get_ball_heatmap_bytes(self):
+        if self.ball_heat_accum is None: return None
+        heat8 = self._to_uint8_with_auto_contrast(cv2.GaussianBlur(self.ball_heat_accum, (15, 15), 0))
+        color = cv2.applyColorMap(heat8, cv2.COLORMAP_JET)
+        ret, buf = cv2.imencode('.jpg', color)
+        return buf.tobytes() if ret else None

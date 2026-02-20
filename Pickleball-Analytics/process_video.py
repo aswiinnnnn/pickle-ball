@@ -117,14 +117,22 @@ class VideoProcessor:
                     break
 
                 # --- Detection & projection (single pass) ---
-                kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
-                players, proj_players = self.player_tracker.detect_and_project(frame, Hmg)
+                if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
+                    kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
+                    if kps is not None and Hmg is not None:
+                        self._cached_kps = kps
+                        self._cached_Hmg = Hmg
+                else:
+                    kps = getattr(self, '_cached_kps', None)
+                    Hmg = getattr(self, '_cached_Hmg', None)
+                    
+                players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
 
                 ball_det = self.ball_tracker.detect_frame(frame)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
 
                 # Columns
-                main_col = self._render_main_view(frame, players, ball_bbox, kps, (main_w, out_h))
+                main_col = self._render_main_view(frame, players, confs, ball_bbox, kps, (main_w, out_h))
                 bird_col = self._render_birdseye(src_w, src_h, kps, Hmg, proj_players, ball_proj, (be_w, out_h))
 
                 # Analytics update + panels
@@ -171,14 +179,22 @@ class VideoProcessor:
                 if not ret:
                     break
 
-                kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
-                players, proj_players = self.player_tracker.detect_and_project(frame, Hmg)
+                if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
+                    kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
+                    if kps is not None and Hmg is not None:
+                        self._cached_kps = kps
+                        self._cached_Hmg = Hmg
+                else:
+                    kps = getattr(self, '_cached_kps', None)
+                    Hmg = getattr(self, '_cached_Hmg', None)
+                    
+                players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
 
                 ball_det = self.ball_tracker.detect_frame(frame)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
 
                 # For live preview, we yield just the main annotated video
-                main_col = self._render_main_view(frame, players, ball_bbox, kps, (main_w, out_h))
+                main_col = self._render_main_view(frame, players, confs, ball_bbox, kps, (main_w, out_h))
                 
                 # Also render birdseye secretly so analytics zones update
                 bird_col = self._render_birdseye(src_w, src_h, kps, Hmg, proj_players, ball_proj, (be_w, out_h))
@@ -188,7 +204,49 @@ class VideoProcessor:
                 frame_idx += 1
                 self._report_progress(progress_callback, frame_idx, total_frames)
                 
-                yield main_col, self.analytics.export_stats()
+                # Convert tracking data to JSON primitives
+                _kps = kps.tolist() if kps is not None and hasattr(kps, "tolist") else None
+                _hmg = Hmg.tolist() if Hmg is not None and hasattr(Hmg, "tolist") else None
+                
+                _players = []
+                for p in (players or []):
+                    # Handle both list and numpy array
+                    _players.append(p.tolist() if hasattr(p, "tolist") else list(p))
+                    
+                _proj_players = {}
+                for pid, pt in enumerate(proj_players or []):
+                    # Ensure pt is numeric
+                    if hasattr(pt, "tolist"):
+                        _proj_players[str(pid)] = pt.tolist()
+                    elif isinstance(pt, (tuple, list)):
+                        _proj_players[str(pid)] = list(pt)
+                    
+                
+                _ball_bbox = []
+                if ball_bbox is not None:
+                    _ball_bbox = ball_bbox.tolist() if hasattr(ball_bbox, "tolist") else list(ball_bbox)
+                    
+                _ball_proj = []
+                if ball_proj is not None:
+                    _ball_proj = ball_proj.tolist() if hasattr(ball_proj, "tolist") else list(ball_proj)
+                
+                # Fetch zones from analytics
+                _zones = {}
+                if hasattr(self.analytics, "_zone_polys"):
+                    for zk, zp in self.analytics._zone_polys.items():
+                        _zones[zk] = zp.tolist() if zp is not None and hasattr(zp, "tolist") else None
+
+                stats = self.analytics.export_stats(
+                    court_keypoints=_kps,
+                    homography_matrix=_hmg,
+                    player_bounding_boxes=_players,
+                    player_birdseye=_proj_players,
+                    ball_bounding_box=_ball_bbox,
+                    ball_birdseye=_ball_proj,
+                    court_zones=_zones
+                )
+                
+                yield main_col, stats
         finally:
             cap.release()
             self._report_progress(progress_callback, total_frames, total_frames)
@@ -256,6 +314,7 @@ class VideoProcessor:
         self,
         frame: np.ndarray,
         players: Optional[Iterable[Tuple[float, float, float, float]]],
+        confs: Optional[Iterable[float]],
         ball_bbox: Optional[Tuple[float, float, float, float]],
         keypoints: Optional[np.ndarray],
         target_size: Tuple[int, int],
@@ -263,9 +322,18 @@ class VideoProcessor:
         canvas = frame.copy()
 
         # Players
-        for p in players or []:
+        player_list = list(players or [])
+        conf_list = list(confs or [])
+        for i, p in enumerate(player_list):
             x1, y1, x2, y2 = map(int, p)
             cv2.rectangle(canvas, (x1, y1), (x2, y2), COLOR_PLAYER, 2)
+            
+            # Draw label
+            conf = conf_list[i] if i < len(conf_list) else 0.0
+            label = f"Player {chr(65 + i)} ({conf:.2f})"
+            (lw, lh), _ = cv2.getTextSize(label, FONT, 0.5, 1)
+            cv2.rectangle(canvas, (x1, y1 - lh - 10), (x1 + lw + 10, y1), (40, 40, 40), -1)
+            cv2.putText(canvas, label, (x1 + 5, y1 - 5), FONT, 0.5, COLOR_PLAYER, 1)
 
         # Ball
         if ball_bbox:

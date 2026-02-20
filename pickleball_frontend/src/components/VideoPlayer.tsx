@@ -78,22 +78,7 @@ const VideoPlayer = ({ jobId, liveData }: VideoPlayerProps) => {
           </span>
         </div>
 
-        {/* FPS indicator */}
-        <div className="absolute top-3 right-3 text-[10px] font-mono text-foreground/60 bg-background/60 px-2 py-0.5 rounded">
-          RealTime Live 120 FPS
-        </div>
 
-        {/* Tracking boxes */}
-        <div className="absolute bottom-[35%] left-[40%] w-16 h-24 tracking-box rounded-sm">
-          <span className="absolute -top-4 left-0 text-[9px] font-mono neon-text bg-background/70 px-1 rounded">
-            Player A (0.97)
-          </span>
-        </div>
-
-        {/* Speed overlay */}
-        <div className="absolute bottom-[38%] right-[30%] text-[10px] font-mono neon-text bg-background/70 px-1.5 py-0.5 rounded">
-          42 mph →
-        </div>
 
         {/* Processing badge */}
         <div className="absolute bottom-14 right-3 flex items-center gap-1.5 bg-primary/20 border border-primary/40 rounded px-2 py-1">

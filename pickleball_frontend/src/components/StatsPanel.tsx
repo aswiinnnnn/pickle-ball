@@ -10,10 +10,10 @@ const StatsPanel = ({ stats }: StatsPanelProps) => {
   
   return (
   <div className="space-y-2">
-    {/* Ball Speed */}
+    {/* Match Tempo */}
     <div className="stat-card">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Ball Speed</span>
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Match Tempo</span>
         <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
       <div className="flex items-baseline gap-1.5 mt-1">
@@ -36,9 +36,15 @@ const StatsPanel = ({ stats }: StatsPanelProps) => {
         </div>
       </div>
       <div className="stat-card">
-        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">In/Out Accuracy</span>
-        <span className="text-2xl font-mono font-bold text-foreground mt-1 block">98.2%</span>
-        <span className="text-[10px] font-mono text-muted-foreground">Confidence Score</span>
+        <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Avg Rally</span>
+        <div className="flex items-baseline gap-1 mt-1">
+          <span className="text-2xl font-mono font-bold text-foreground">{stats?.rally?.avg_rally_s ? stats.rally.avg_rally_s.toFixed(1) : "0.0"}</span>
+          <span className="text-[10px] font-mono text-muted-foreground">s</span>
+        </div>
+        <div className="mt-1 flex justify-between items-center text-[9px] font-mono text-muted-foreground">
+          <span>Longest:</span>
+          <span className="text-primary font-bold">{stats?.rally?.longest_rally_s ? stats.rally.longest_rally_s.toFixed(1) : "0.0"}s</span>
+        </div>
       </div>
     </div>
   </div>

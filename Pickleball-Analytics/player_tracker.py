@@ -41,12 +41,15 @@ class PlayerTracker:
         Run YOLO player detection on frame.
         Returns list of bounding boxes in format [x1, y1, x2, y2].
         """
-        results = self.model.predict(frame, conf=self.conf_threshold)[0]
+        results = self.model.predict(frame, conf=self.conf_threshold, verbose=False)[0]
         boxes = []
+        confs = []
         for box in results.boxes:
             bbox = box.xyxy.cpu().numpy()[0]
+            conf = float(box.conf.cpu().numpy()[0])
             boxes.append(bbox.tolist())
-        return boxes
+            confs.append(conf)
+        return boxes, confs
 
     def project_player_positions(self, boxes, H):
         """
@@ -69,8 +72,8 @@ class PlayerTracker:
     def detect_and_project(self, frame, H):
         """
         Convenience method: detect players and get projected points.
-        Returns tuple: (list of bounding boxes, list of projected points)
+        Returns tuple: (list of bounding boxes, list of projected points, list of confidences)
         """
-        boxes = self.detect_players(frame)
+        boxes, confs = self.detect_players(frame)
         projected_pts = self.project_player_positions(boxes, H)
-        return boxes, projected_pts
+        return boxes, projected_pts, confs

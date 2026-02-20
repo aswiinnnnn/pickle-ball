@@ -44,6 +44,12 @@ def process_video_task(job_id: str, video_path: str):
                 jobs[job_id]["latest_frame"] = buffer.tobytes()
             jobs[job_id]["latest_stats"] = stats
             
+            # Export heatmaps periodically
+            frame_idx = stats.get("operational", {}).get("current_frame", 0)
+            if frame_idx % 30 == 0:
+                jobs[job_id]["player_heatmap"] = processor.analytics.get_player_heatmap_bytes()
+                jobs[job_id]["ball_heatmap"] = processor.analytics.get_ball_heatmap_bytes()
+            
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["progress"] = 1.0
         
@@ -66,7 +72,9 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
         "result": None,
         "error": None,
         "latest_frame": None,
-        "latest_stats": None
+        "latest_stats": None,
+        "player_heatmap": None,
+        "ball_heatmap": None
     }
     
     # Run long-running process in a thread so we don't block asyncio loop
@@ -160,8 +168,24 @@ async def get_live_stats(job_id: str):
     return {
         "status": jobs[job_id]["status"],
         "progress": jobs[job_id]["progress"],
-        "stats": jobs[job_id].get("latest_stats")
+        "stats": jobs[job_id]["latest_stats"]
     }
+
+from fastapi.responses import Response
+
+@app.get("/api/live_heatmap/{asset_type}/{job_id}")
+async def get_live_heatmap(asset_type: str, job_id: str):
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    if asset_type not in ["player", "ball"]:
+        raise HTTPException(status_code=400, detail="Invalid heatmap type")
+        
+    img_bytes = jobs[job_id].get(f"{asset_type}_heatmap")
+    if not img_bytes:
+        raise HTTPException(status_code=404, detail="Heatmap not yet generated")
+        
+    return Response(content=img_bytes, media_type="image/jpeg")
 
 if __name__ == "__main__":
     import uvicorn
