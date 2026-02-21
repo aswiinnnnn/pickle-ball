@@ -432,6 +432,11 @@ class Analytics:
         # Fallback to logical court thresholds (300 to 580)
         return 300, 580
 
+    def get_kitchen_midline(self):
+        """Return the y-midpoint of the kitchen band in bird coords."""
+        y_min, y_max = self._current_kitchen_bounds_with_fallback()
+        return (y_min + y_max) / 2
+
     def update_kitchen_from_keypoints(self, proj_kpts: np.ndarray):
         """
         proj_kpts: shape (12,2) or (N,2) in bird space. Assumes 4 rows x 3 cols:

@@ -28,6 +28,7 @@ from ball_tracker import BallTracker
 from player_tracker import PlayerTracker
 from court_detection import CourtDetector
 from analytics import Analytics
+from score_tracker import ScoreTracker
 
 # ==============================================================================
 # Module‑level constants (easy to tweak and reuse)
@@ -92,8 +93,10 @@ class VideoProcessor:
         self.player_tracker = PlayerTracker(os.path.join(MODELS_DIR, "player_tracking.pt"))
         self.court_mapper = CourtDetector(os.path.join(MODELS_DIR, "court_detection.pt"))
         self.analytics = Analytics(self.filters)
+        self.score_tracker = ScoreTracker()
 
         self.output_dir = self._make_output_dir()
+        self._prev_rally_active = False  # for rally-end detection
 
     # ------------------------------------------------------------------
     # Public API
@@ -129,14 +132,30 @@ class VideoProcessor:
                 players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
 
                 ball_det = self.ball_tracker.detect_frame(frame)
+                self.ball_tracker.detect_bounce(ball_det)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
+                self.ball_tracker.draw_bounce(frame)
+
+                # Score tracking: side + bounce + rally-end
+                kitchen_mid = self.analytics.get_kitchen_midline()
+                ball_side = self.ball_tracker.get_ball_side(ball_proj, kitchen_mid)
+                self.ball_tracker.update_side_bounce()
+                ball_in_bounds = self.analytics._ball_in_bounds(ball_proj)
+                self.score_tracker.update(ball_proj, ball_in_bounds, ball_side)
+
+                # Analytics update (must happen before rally-end check)
+                self.analytics.update_counters(frame_idx, proj_players, ball_proj)
+
+                # Check for rally end
+                if self._prev_rally_active and not self.analytics._rally_active:
+                    self.score_tracker.on_rally_end(frame_idx, self.ball_tracker)
+                self._prev_rally_active = self.analytics._rally_active
+
+                self.score_tracker.draw_score(frame)
 
                 # Columns
                 main_col = self._render_main_view(frame, players, confs, ball_bbox, kps, (main_w, out_h))
                 bird_col = self._render_birdseye(src_w, src_h, kps, Hmg, proj_players, ball_proj, (be_w, out_h))
-
-                # Analytics update + panels
-                self.analytics.update_counters(frame_idx, proj_players, ball_proj)
                 grid_col = self._render_analytics_grid((panel_w, panel_h), (grid_w, out_h), bird_reference=bird_col)
 
                 # Compose & write
@@ -154,8 +173,10 @@ class VideoProcessor:
             # Export final JSON stats
             import json
             stats_path = os.path.join(self.output_dir, "stats.json")
+            combined_stats = self.analytics.export_stats()
+            combined_stats["score"] = self.score_tracker.export_stats()
             with open(stats_path, "w") as f:
-                json.dump(self.analytics.export_stats(), f, indent=4)
+                json.dump(combined_stats, f, indent=4)
 
         print(f"Saved: {out_path}")
         return {
@@ -191,15 +212,32 @@ class VideoProcessor:
                 players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
 
                 ball_det = self.ball_tracker.detect_frame(frame)
+                self.ball_tracker.detect_bounce(ball_det)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
+                self.ball_tracker.draw_bounce(frame)
+
+                # Score tracking: side + bounce + rally-end
+                kitchen_mid = self.analytics.get_kitchen_midline()
+                ball_side = self.ball_tracker.get_ball_side(ball_proj, kitchen_mid)
+                self.ball_tracker.update_side_bounce()
+                ball_in_bounds = self.analytics._ball_in_bounds(ball_proj)
+                self.score_tracker.update(ball_proj, ball_in_bounds, ball_side)
+
+                # Analytics update (must happen before rally-end check)
+                self.analytics.update_counters(frame_idx, proj_players, ball_proj)
+
+                # Check for rally end
+                if self._prev_rally_active and not self.analytics._rally_active:
+                    self.score_tracker.on_rally_end(frame_idx, self.ball_tracker)
+                self._prev_rally_active = self.analytics._rally_active
+
+                self.score_tracker.draw_score(frame)
 
                 # For live preview, we yield just the main annotated video
                 main_col = self._render_main_view(frame, players, confs, ball_bbox, kps, (main_w, out_h))
                 
                 # Also render birdseye secretly so analytics zones update
                 bird_col = self._render_birdseye(src_w, src_h, kps, Hmg, proj_players, ball_proj, (be_w, out_h))
-                
-                self.analytics.update_counters(frame_idx, proj_players, ball_proj)
 
                 frame_idx += 1
                 self._report_progress(progress_callback, frame_idx, total_frames)
