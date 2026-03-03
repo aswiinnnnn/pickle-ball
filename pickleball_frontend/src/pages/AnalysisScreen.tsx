@@ -1,4 +1,4 @@
-import { Monitor, Layers, Flame, Target, Crosshair } from "lucide-react";
+import { Monitor, Layers, Flame, Target, Crosshair, ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 import OperationalPanel from "@/components/ScorePanel"; // Renamed ScorePanel to OperationalPanel
 import StatsPanel from "@/components/StatsPanel";
@@ -36,6 +36,13 @@ const AnalysisScreen = ({ jobId, onBack }: AnalysisScreenProps) => {
     {/* Top Bar */}
     <header className="flex items-center justify-between border-b border-border px-4 py-2 shrink-0">
       <div className="flex items-center gap-2.5">
+        <button
+          onClick={onBack}
+          className="flex h-7 w-7 items-center justify-center rounded bg-muted hover:bg-muted-foreground/20 transition-colors mr-1"
+          title="Back to Upload"
+        >
+          <ArrowLeft className="h-4 w-4 text-foreground" />
+        </button>
         <div className="flex h-7 w-7 items-center justify-center rounded bg-primary">
           <Monitor className="h-4 w-4 text-primary-foreground" />
         </div>
@@ -51,12 +58,20 @@ const AnalysisScreen = ({ jobId, onBack }: AnalysisScreenProps) => {
 
     {/* Main Content */}
     <div className="flex flex-1 min-h-0">
-      {/* Left Sidebar */}
-      <aside className="w-48 shrink-0 border-r border-border p-2 flex flex-col gap-2">
-        <OperationalPanel stats={stats} />
-        <StatsPanel stats={stats} />
-        <SpatialPanel stats={stats} />
-        <SessionAnalytics stats={stats} />
+      {/* Left Sidebar — Analytics */}
+      <aside className="w-72 shrink-0 border-r border-border p-1.5 flex flex-col gap-1.5">
+        <div className="flex-1 flex flex-col">
+          <OperationalPanel stats={stats} />
+        </div>
+        <div className="flex-[2] flex flex-col">
+          <StatsPanel stats={stats} />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <SpatialPanel stats={stats} />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <SessionAnalytics stats={stats} />
+        </div>
       </aside>
 
       {/* Center - Video */}
@@ -64,8 +79,8 @@ const AnalysisScreen = ({ jobId, onBack }: AnalysisScreenProps) => {
         <VideoPlayer jobId={jobId} liveData={liveData} />
       </main>
 
-      {/* Right Sidebar */}
-      <aside className="w-56 shrink-0 border-l border-border p-2 flex flex-col gap-2">
+      {/* Right Sidebar — Maps */}
+      <aside className="w-72 shrink-0 border-l border-border p-2 flex flex-col gap-2 overflow-y-auto">
         <BirdEyeMap jobId={jobId} stats={stats} />
 
 

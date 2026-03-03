@@ -85,7 +85,7 @@
   }
 
   .stat-card {
-    @apply bg-card rounded-lg p-3 neon-border;
+    @apply bg-card rounded-lg p-2 neon-border;
   }
 
   .pulse-dot {

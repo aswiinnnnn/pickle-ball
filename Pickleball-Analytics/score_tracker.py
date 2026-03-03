@@ -99,16 +99,16 @@ class ScoreTracker:
         h, w = frame.shape[:2]
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        # --- Always-on scoreboard (top-right) ---
+        # --- Always-on scoreboard (top-left, large) ---
         score_text = f"A: {self.score['top']}  |  B: {self.score['bottom']}"
-        scale = 0.8
-        thickness = 2
+        scale = 2.4
+        thickness = 5
         (tw, th), baseline = cv2.getTextSize(score_text, font, scale, thickness)
-        tx = w - tw - 20
-        ty = 35
+        tx = 20
+        ty = 70
 
         # Background
-        pad = 8
+        pad = 20
         cv2.rectangle(frame, (tx - pad, ty - th - pad),
                       (tx + tw + pad, ty + baseline + pad), (0, 0, 0), -1)
         cv2.rectangle(frame, (tx - pad, ty - th - pad),

@@ -102,9 +102,11 @@ class Analytics:
         self._rally_active = False
         self._rally_frames = 0
         self._gap_frames = 0
-        self._gap_threshold = 18         # ~0.6s at 30 fps (tune)
+        self._gap_threshold = 30         # ~1.0s at 30 fps (tune)
         self._rallies = []               # list of rally lengths in frames
         self._elapsed_frames = 0         # for tempo calculation (overall)
+        self._rally_hold_frames = 0      # hold-inactive countdown
+        self._rally_hold_duration = 90   # 3 seconds at 30 fps
 
         # Learned court zone polygons in bird coords (updated every frame)
         self._zone_polys = {
@@ -184,6 +186,12 @@ class Analytics:
         self._elapsed_frames += 1
 
         in_play = self._ball_in_bounds(ball_proj)
+
+        # If rally is held inactive, count down and ignore ball activity
+        if self._rally_hold_frames > 0:
+            self._rally_hold_frames -= 1
+            return
+
         if in_play:
             # ball present & in-bounds → rally is active/continues
             self._rally_active = True
@@ -200,6 +208,7 @@ class Analytics:
                     self._rally_active = False
                     self._rally_frames = 0
                     self._gap_frames = 0
+                    self._rally_hold_frames = self._rally_hold_duration  # hold for 3s
 
 
     # ---------- panel renderers ----------

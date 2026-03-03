@@ -10,6 +10,7 @@ env/
 Pickleball-Analytics/models/
 Pickleball-Analytics/video_outputs/
 Pickleball-Analytics/uploads/
+Pickleball-Analytics/detection_cache/
 *.pt
 *.pth
 *.mp4

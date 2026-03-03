@@ -11,14 +11,14 @@ const SessionAnalytics = ({ stats }: SessionAnalyticsProps) => {
   ];
 
   return (
-  <div className="stat-card">
-    <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Zone Intrusions</span>
-    <table className="w-full mt-2 text-xs font-mono">
+  <div className="stat-card h-full">
+    <span className="text-[11px] font-mono text-muted-foreground uppercase tracking-wider">Zone Intrusions</span>
+    <table className="w-full mt-1.5 text-xs font-mono">
       <thead>
         <tr className="text-muted-foreground">
-          <th className="text-left pb-1 font-medium">Metric</th>
-          <th className="text-right pb-1 font-medium">Total</th>
-          <th className="text-right pb-1 font-medium">Avg</th>
+          <th className="text-left pb-1 font-medium text-[10px]">Metric</th>
+          <th className="text-right pb-1 font-medium text-[10px]">Total</th>
+          <th className="text-right pb-1 font-medium text-[10px]">Avg</th>
         </tr>
       </thead>
       <tbody className="text-foreground">

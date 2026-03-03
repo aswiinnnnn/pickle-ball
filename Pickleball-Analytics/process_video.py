@@ -29,6 +29,7 @@ from player_tracker import PlayerTracker
 from court_detection import CourtDetector
 from analytics import Analytics
 from score_tracker import ScoreTracker
+from detection_cache import DetectionCache
 
 # ==============================================================================
 # Module‑level constants (easy to tweak and reuse)
@@ -112,6 +113,11 @@ class VideoProcessor:
 
         out_path, writer = self._create_writer(out_w, out_h, fps)
 
+        # --- Detection cache ---
+        cache_data = DetectionCache.load(self.video_path)
+        using_cache = cache_data is not None
+        frame_cache = []  # collect detections on first run
+
         frame_idx = 0
         try:
             while True:
@@ -119,22 +125,55 @@ class VideoProcessor:
                 if not ret:
                     break
 
-                # --- Detection & projection (single pass) ---
-                if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
-                    kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
-                    if kps is not None and Hmg is not None:
-                        self._cached_kps = kps
-                        self._cached_Hmg = Hmg
+                # --- Detection & projection ---
+                if using_cache and frame_idx < len(cache_data):
+                    cached = cache_data[frame_idx]
+                    kps = cached["court"]["keypoints"]
+                    Hmg = cached["court"]["homography"]
+                    players = cached["players"]["boxes"]
+                    confs = cached["players"]["confs"]
+                    proj_players = self.player_tracker.project_player_positions(players, Hmg)
+                    # Sort by bird's-eye Y (top-side = Player A, bottom = Player B)
+                    if proj_players and len(proj_players) == len(players):
+                        combined = list(zip(players, proj_players, confs))
+                        combined.sort(key=lambda t: t[1][1])
+                        players = [c[0] for c in combined]
+                        proj_players = [c[1] for c in combined]
+                        confs = [c[2] for c in combined]
+                    ball_det = cached["ball"]["bbox_dict"]
                 else:
-                    kps = getattr(self, '_cached_kps', None)
-                    Hmg = getattr(self, '_cached_Hmg', None)
-                    
-                players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
+                    # Court detection (first few frames or use cached)
+                    if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
+                        kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
+                        if kps is not None and Hmg is not None:
+                            self._cached_kps = kps
+                            self._cached_Hmg = Hmg
+                    else:
+                        kps = getattr(self, '_cached_kps', None)
+                        Hmg = getattr(self, '_cached_Hmg', None)
 
-                ball_det = self.ball_tracker.detect_frame(frame)
+                    players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
+                    ball_det = self.ball_tracker.detect_frame(frame)
+
+                    # Collect for cache
+                    frame_cache.append({
+                        "court": {
+                            "keypoints": kps,
+                            "homography": Hmg,
+                        },
+                        "players": {
+                            "boxes": players,
+                            "confs": confs,
+                        },
+                        "ball": {
+                            "bbox_dict": ball_det,
+                        },
+                    })
+
                 self.ball_tracker.detect_bounce(ball_det)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
                 self.ball_tracker.draw_bounce(frame)
+                self.ball_tracker.update_speed(ball_proj, fps)
 
                 # Score tracking: side + bounce + rally-end
                 kitchen_mid = self.analytics.get_kitchen_midline()
@@ -170,6 +209,10 @@ class VideoProcessor:
             self.analytics.save_outputs(self.output_dir)
             self._report_progress(progress_callback, total_frames, total_frames)
 
+            # Save detection cache on first run
+            if not using_cache and frame_cache:
+                DetectionCache.save(self.video_path, frame_cache)
+
             # Export final JSON stats
             import json
             stats_path = os.path.join(self.output_dir, "stats.json")
@@ -193,6 +236,11 @@ class VideoProcessor:
         self.analytics.set_canvas_size(src_w, src_h)
         self.analytics.set_video_context(total_frames=total_frames, fps=fps)
 
+        # --- Detection cache ---
+        cache_data = DetectionCache.load(self.video_path)
+        using_cache = cache_data is not None
+        frame_cache = []  # collect detections on first run
+
         frame_idx = 0
         try:
             while True:
@@ -200,21 +248,55 @@ class VideoProcessor:
                 if not ret:
                     break
 
-                if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
-                    kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
-                    if kps is not None and Hmg is not None:
-                        self._cached_kps = kps
-                        self._cached_Hmg = Hmg
+                # --- Detection & projection ---
+                if using_cache and frame_idx < len(cache_data):
+                    cached = cache_data[frame_idx]
+                    kps = cached["court"]["keypoints"]
+                    Hmg = cached["court"]["homography"]
+                    players = cached["players"]["boxes"]
+                    confs = cached["players"]["confs"]
+                    proj_players = self.player_tracker.project_player_positions(players, Hmg)
+                    # Sort by bird's-eye Y (top-side = Player A, bottom = Player B)
+                    if proj_players and len(proj_players) == len(players):
+                        combined = list(zip(players, proj_players, confs))
+                        combined.sort(key=lambda t: t[1][1])
+                        players = [c[0] for c in combined]
+                        proj_players = [c[1] for c in combined]
+                        confs = [c[2] for c in combined]
+                    ball_det = cached["ball"]["bbox_dict"]
                 else:
-                    kps = getattr(self, '_cached_kps', None)
-                    Hmg = getattr(self, '_cached_Hmg', None)
-                    
-                players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
+                    # Court detection (first few frames or use cached)
+                    if frame_idx < 5 and (not hasattr(self, '_cached_kps') or self._cached_Hmg is None):
+                        kps, Hmg = self.court_mapper.get_keypoints_and_homography(frame)
+                        if kps is not None and Hmg is not None:
+                            self._cached_kps = kps
+                            self._cached_Hmg = Hmg
+                    else:
+                        kps = getattr(self, '_cached_kps', None)
+                        Hmg = getattr(self, '_cached_Hmg', None)
 
-                ball_det = self.ball_tracker.detect_frame(frame)
+                    players, proj_players, confs = self.player_tracker.detect_and_project(frame, Hmg)
+                    ball_det = self.ball_tracker.detect_frame(frame)
+
+                    # Collect for cache
+                    frame_cache.append({
+                        "court": {
+                            "keypoints": kps,
+                            "homography": Hmg,
+                        },
+                        "players": {
+                            "boxes": players,
+                            "confs": confs,
+                        },
+                        "ball": {
+                            "bbox_dict": ball_det,
+                        },
+                    })
+
                 self.ball_tracker.detect_bounce(ball_det)
                 ball_bbox, ball_proj = self.ball_tracker.process_and_project(ball_det, frame, Hmg)
                 self.ball_tracker.draw_bounce(frame)
+                self.ball_tracker.update_speed(ball_proj, fps)
 
                 # Score tracking: side + bounce + rally-end
                 kitchen_mid = self.analytics.get_kitchen_midline()
@@ -281,13 +363,19 @@ class VideoProcessor:
                     player_birdseye=_proj_players,
                     ball_bounding_box=_ball_bbox,
                     ball_birdseye=_ball_proj,
-                    court_zones=_zones
+                    court_zones=_zones,
+                    ball_speed=self.ball_tracker.export_speed_stats(),
+                    score_data=self.score_tracker.export_stats()
                 )
                 
                 yield main_col, stats
         finally:
             cap.release()
             self._report_progress(progress_callback, total_frames, total_frames)
+
+            # Save detection cache on first run
+            if not using_cache and frame_cache:
+                DetectionCache.save(self.video_path, frame_cache)
 
     # ------------------------------------------------------------------
     # Helpers — configuration & IO

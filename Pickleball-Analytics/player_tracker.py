@@ -51,6 +51,7 @@ class PlayerTracker:
             confs.append(conf)
         return boxes, confs
 
+
     def project_player_positions(self, boxes, H):
         """
         Given bounding boxes and homography H, project player bottom-center points.
@@ -73,7 +74,21 @@ class PlayerTracker:
         """
         Convenience method: detect players and get projected points.
         Returns tuple: (list of bounding boxes, list of projected points, list of confidences)
+
+        Players are sorted by bird's-eye Y coordinate (ascending) so the
+        top-side player is always index 0 (Player A) and bottom-side is
+        index 1 (Player B).  This keeps IDs stable across frames even when
+        YOLO detection order changes.
         """
         boxes, confs = self.detect_players(frame)
         projected_pts = self.project_player_positions(boxes, H)
+
+        # Sort all three lists together by projected Y (top-side first)
+        if projected_pts and len(projected_pts) == len(boxes):
+            combined = list(zip(boxes, projected_pts, confs))
+            combined.sort(key=lambda t: t[1][1])  # sort by bird's-eye Y
+            boxes = [c[0] for c in combined]
+            projected_pts = [c[1] for c in combined]
+            confs = [c[2] for c in combined]
+
         return boxes, projected_pts, confs

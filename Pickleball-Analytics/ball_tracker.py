@@ -53,6 +53,15 @@ class BallTracker:
         self._last_ball_side = None            # "top" or "bottom"
         self._side_bounce_counts = {"top": 0, "bottom": 0}  # consecutive bounces per side
 
+        # Ball speed tracking (bird's-eye coords)
+        self._prev_ball_proj = None       # previous frame's projected position
+        self._speed_raw = 0.0             # instantaneous speed (bird px/frame)
+        self._speed_smooth = 0.0          # EMA-smoothed speed
+        self._speed_ema_alpha = 0.3       # smoothing factor
+        self._max_speed = 0.0             # peak speed seen
+        self._speed_mph = 0.0             # current speed in estimated mph
+        self._max_speed_mph = 0.0         # peak speed in estimated mph
+
     def detect_frame(self, frame):
         """Detect ball in a single frame, return dict with bbox if found"""
         results = self.model.predict(frame, conf=0.15)[0]
@@ -113,32 +122,9 @@ class BallTracker:
         return self._bounce_flag
 
     def draw_bounce(self, frame):
-        """Draw a prominent BOUNCE! label on the frame if a bounce was recently detected."""
-        if self._bounce_display_frames > 0:
-            h, w = frame.shape[:2]
-            text = "BOUNCE!"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 1.8
-            thickness = 4
-            (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
-            tx = (w - tw) // 2
-            ty = 60 + th
-
-            # Background rectangle for readability
-            pad = 15
-            cv2.rectangle(frame, (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + baseline + pad), (0, 0, 0), -1)
-            cv2.rectangle(frame, (tx - pad, ty - th - pad),
-                          (tx + tw + pad, ty + baseline + pad), (0, 255, 255), 3)
-
-            # Text
-            cv2.putText(frame, text, (tx, ty), font, scale, (0, 255, 255), thickness)
-
-            # Bounce count below
-            count_text = f"Total: {self.bounce_count}"
-            (cw, ch), _ = cv2.getTextSize(count_text, font, 0.7, 2)
-            cv2.putText(frame, count_text, (tx + (tw - cw) // 2, ty + ch + 20),
-                        font, 0.7, (255, 255, 255), 2)
+        """Draw a prominent BOUNCE! label on the frame if a bounce was recently detected. (Disabled)"""
+        # User requested to remove this overlay
+        pass
 
     def get_ball_side(self, ball_proj, kitchen_y_mid):
         """
@@ -220,3 +206,51 @@ class BallTracker:
                 return bbox, proj
             return bbox, None
         return None, None
+
+    def update_speed(self, ball_proj, fps=30):
+        """
+        Compute ball speed from consecutive bird's-eye projected positions.
+        Call once per frame after process_and_project.
+        Uses a rough scale: bird canvas is ~880px tall ≈ ~44ft (pickleball court).
+        """
+        if ball_proj is None:
+            self._prev_ball_proj = None
+            return
+
+        if self._prev_ball_proj is not None:
+            dx = ball_proj[0] - self._prev_ball_proj[0]
+            dy = ball_proj[1] - self._prev_ball_proj[1]
+            dist_px = (dx**2 + dy**2) ** 0.5  # bird-eye pixels per frame
+
+            # Rough conversion: 880 bird px ≈ 44 ft (pickleball court length)
+            ft_per_px = 44.0 / 880.0
+            raw_mph = dist_px * ft_per_px * fps * 3600.0 / 5280.0
+
+            # Reject outlier spikes (detection jumps, not real ball movement)
+            if raw_mph > 80.0:
+                self._prev_ball_proj = ball_proj
+                return
+
+            self._speed_raw = dist_px
+            self._speed_smooth = (
+                self._speed_ema_alpha * dist_px
+                + (1 - self._speed_ema_alpha) * self._speed_smooth
+            )
+
+            smoothed_mph = min(self._speed_smooth * ft_per_px * fps * 3600.0 / 5280.0, 70.0)
+
+            self._speed_mph = smoothed_mph
+            if smoothed_mph > self._max_speed_mph:
+                self._max_speed_mph = smoothed_mph
+
+            if self._speed_smooth > self._max_speed:
+                self._max_speed = self._speed_smooth
+
+        self._prev_ball_proj = ball_proj
+
+    def export_speed_stats(self):
+        """Return ball speed data for JSON export."""
+        return {
+            "current_mph": round(self._speed_mph, 1),
+            "max_mph": round(self._max_speed_mph, 1),
+        }
